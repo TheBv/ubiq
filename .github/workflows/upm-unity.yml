@@ -4,6 +4,8 @@ on:
     tags: [ 'unity-v*.*.*' ]
 jobs:
   build-upm:
+    permissions:
+      contents: write # Pushes the upm branch and tag
     uses: ./.github/workflows/build-upm-from-project-folder.yml
     with:
       project-folder: Unity/Assets/Ubiq
