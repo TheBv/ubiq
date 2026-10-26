@@ -16,10 +16,72 @@ var unityWebRtcInteropLibrary = {
             volumeSum: 0,
             sampleCount: 0,
             sampleRate: 0,
+            samples: [],
             stats: {
                 sampleCount: 0,
                 volumeSum: 0
             }
+        },
+
+        // shortcut: oldest chunks are dropped past this, so samples are lost
+        // if Unity stops reading for a while (e.g., tab in background).
+        maxQueuedChunks: 32,
+
+        pushSamples: function(queue, arr) {
+            queue.push(arr.slice());
+            if (queue.length > context.maxQueuedChunks) {
+                queue.shift();
+            }
+        },
+
+        // Copy up to length queued samples into the Unity heap at ptr
+        popSamples: function(queue, ptr, length) {
+            let count = 0;
+            while (queue.length > 0 && count < length) {
+                let chunk = queue[0];
+                let n = Math.min(chunk.length, length - count);
+                HEAPF32.set(chunk.subarray(0, n), (ptr >> 2) + count);
+                count += n;
+                if (n < chunk.length) {
+                    queue[0] = chunk.subarray(n);
+                } else {
+                    queue.shift();
+                }
+            }
+            return count;
+        },
+
+        // Shared by all peer connections. Resolves to the microphone stream.
+        startMicrophone: function() {
+            if (!context.audioContext) {
+                context.audioContext = new AudioContext();
+            }
+
+            if (!context.whenUserMedia) {
+                context.whenUserMedia = navigator.mediaDevices.getUserMedia({audio:true})
+                .then((stream) => {
+                    let audioContext = context.audioContext;
+                    context.processorNode = audioContext.createScriptProcessor(1024, 1, 1);
+                    context.processorNode.onaudioprocess = ({inputBuffer}) => {
+                        let arr = inputBuffer.getChannelData(0);
+                        let length = arr.length;
+                        for (let i = 0; i < length; i++) {
+                            context.record.volumeSum += Math.abs(arr[i]);
+                        }
+                        context.record.sampleCount += length;
+                        context.record.sampleRate = inputBuffer.sampleRate;
+                        context.pushSamples(context.record.samples, arr);
+                    };
+                    context.gainNode = new GainNode(audioContext,{gain:0});
+                    context.src = audioContext.createMediaStreamSource(stream);
+                    context.src.connect(context.processorNode);
+                    context.processorNode.connect(context.gainNode);
+                    context.gainNode.connect(audioContext.destination);
+                    return stream;
+                });
+            }
+
+            return context.whenUserMedia;
         },
 
         iceConnectionState: {
@@ -96,13 +158,7 @@ var unityWebRtcInteropLibrary = {
         let iceServers = instance.startArgs.iceServers;
         delete instance.startArgs;
 
-        if (!context.audioContext) {
-            context.audioContext = new AudioContext();
-        }
-
-        if (!context.whenUserMedia) {
-            context.whenUserMedia = navigator.mediaDevices.getUserMedia({audio:true});
-        }
+        let whenUserMedia = context.startMicrophone();
 
         instance.polite = polite;
         instance.msgs = [];
@@ -110,6 +166,7 @@ var unityWebRtcInteropLibrary = {
             volumeSum: 0,
             sampleCount: 0,
             sampleRate: 0,
+            samples: [],
             stats: {
                 sampleCount: 0,
                 volumeSum: 0
@@ -159,6 +216,7 @@ var unityWebRtcInteropLibrary = {
                     }
                     instance.playback.sampleCount += length;
                     instance.playback.sampleRate = inputBuffer.sampleRate;
+                    context.pushSamples(instance.playback.samples, arr);
                 };
                 instance.gainNode = new GainNode(audioContext,{gain:0});
                 instance.src = audioContext.createMediaStreamSource(stream);
@@ -194,31 +252,12 @@ var unityWebRtcInteropLibrary = {
         };
         // Negotiation continued in JS_WebRTC_ProcessSignalingMessage
 
-        context.whenUserMedia
+        whenUserMedia
         .then((stream) => {
             let instance = context.instances[id];
             if (!instance) {
                 // Close() called before getUserMedia returned
                 return;
-            }
-
-            if (!context.processorNode) {
-                let audioContext = context.audioContext;
-                context.processorNode = audioContext.createScriptProcessor(1024, 1, 1);
-                context.processorNode.onaudioprocess = ({inputBuffer}) => {
-                    let arr = inputBuffer.getChannelData(0);
-                    let length = arr.length;
-                    for (let i = 0; i < length; i++) {
-                        context.record.volumeSum += Math.abs(arr[i]);
-                    }
-                    context.record.sampleCount += length;
-                    context.record.sampleRate = inputBuffer.sampleRate;
-                };
-                context.gainNode = new GainNode(audioContext,{gain:0});
-                context.src = audioContext.createMediaStreamSource(stream);
-                context.src.connect(context.processorNode);
-                context.processorNode.connect(context.gainNode);
-                context.gainNode.connect(audioContext.destination);
             }
 
             for (const track of stream.getTracks()) {
@@ -240,6 +279,23 @@ var unityWebRtcInteropLibrary = {
 
             console.error("Closing this Peer Connection. Reason: " + error);
         });
+    },
+
+    JS_WebRTC_StartMicrophone: function() {
+        context.startMicrophone().catch((error) => console.error(error));
+    },
+
+    JS_WebRTC_GetRecordSamples: function(ptr, length) {
+        return context.popSamples(context.record.samples, ptr, length);
+    },
+
+    JS_WebRTC_GetPlaybackSamples: function(id, ptr, length) {
+        let instance = context.instances[id];
+        if (!instance || !instance.pc) {
+            return 0;
+        }
+
+        return context.popSamples(instance.playback.samples, ptr, length);
     },
 
     JS_WebRTC_ResumeAudioContext: function() {

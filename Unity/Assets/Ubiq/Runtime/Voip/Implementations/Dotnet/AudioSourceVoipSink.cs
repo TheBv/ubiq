@@ -104,9 +104,10 @@ namespace Ubiq.Voip.Implementations.Dotnet
                 stopwatch.Start();
             }
 
-            public AudioStats Commit (int currentTimeSamples, AudioClip audioClip)
+            public AudioStats Commit (int currentTimeSamples, AudioClip audioClip,
+                AudioSamplesHandler samplesPushed)
             {
-                var stats = Advance(currentTimeSamples, audioClip);
+                var stats = Advance(currentTimeSamples, audioClip, samplesPushed);
                 Flush(audioClip);
                 return stats;
             }
@@ -188,7 +189,8 @@ namespace Ubiq.Voip.Implementations.Dotnet
             }
 
             // Step internal time trackers forward and zero out just-read samples
-            private AudioStats Advance (int timeSamples, AudioClip audioClip)
+            private AudioStats Advance (int timeSamples, AudioClip audioClip,
+                AudioSamplesHandler samplesPushed)
             {
                 if (absTimeSamples < 0)
                 {
@@ -213,6 +215,7 @@ namespace Ubiq.Voip.Implementations.Dotnet
 
                         // Gather volume for this set of stats
                         audioClip.GetData(floatPcms,lastTimeSamples);
+                        samplesPushed?.Invoke(floatPcms,1,audioClip.frequency);
                         for (int i = 0; i < floatPcms.Length; i++)
                         {
                             volume += Mathf.Abs(floatPcms[i]);
@@ -241,6 +244,7 @@ namespace Ubiq.Voip.Implementations.Dotnet
         }
 
         public event Action<AudioStats> statsPushed;
+        public event AudioSamplesHandler samplesPushed;
 
         public int sampleRate { get { return 16000; } }
         public int bufferSamples { get { return sampleRate * 2; } }
@@ -322,7 +326,7 @@ namespace Ubiq.Voip.Implementations.Dotnet
 
             var timeSamples = unityAudioSource.timeSamples;
             var clip = unityAudioSource.clip;
-            var stats = rtpBufferer.Commit(timeSamples,clip);
+            var stats = rtpBufferer.Commit(timeSamples,clip,samplesPushed);
             statsPushed?.Invoke(stats);
         }
 

@@ -107,6 +107,13 @@ namespace Ubiq.Voip
         public event Action<AudioStats> playbackStatsPushed;
         public event Action<AudioStats> recordStatsPushed;
 
+        /// <summary>
+        /// The audio received from the remote peer, before spatialisation.
+        /// For the local microphone, see
+        /// <see cref="VoipPeerConnectionManager.microphoneSamplesPushed"/>.
+        /// </summary>
+        public event AudioSamplesHandler playbackSamplesPushed;
+
         private NetworkId networkId;
         private NetworkScene networkScene;
         private IPeerConnectionImpl impl;
@@ -153,6 +160,7 @@ namespace Ubiq.Voip
             networkScene.AddProcessor(networkId, ProcessMessage);
 
             impl.Setup(new PeerConnectionContext(this),polite,iceServers,
+                Impl_PlaybackSamplesPushed,
                 Impl_PlaybackStatsPushed,Impl_RecordStatsPushed,
                 Impl_IceConnectionStateChanged,Impl_PeerConnectionStateChanged);
             isSetup = true;
@@ -174,6 +182,12 @@ namespace Ubiq.Voip
         private static AudioStats ConvertStats(Implementations.AudioStats stats)
         {
             return new AudioStats(stats.sampleCount,stats.volumeSum,stats.sampleRate);
+        }
+
+        private void Impl_PlaybackSamplesPushed (ReadOnlySpan<float> samples,
+            int channels, int sampleRate)
+        {
+            playbackSamplesPushed?.Invoke(samples,channels,sampleRate);
         }
 
         private void Impl_PlaybackStatsPushed (Implementations.AudioStats stats)

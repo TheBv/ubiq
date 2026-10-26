@@ -38,6 +38,26 @@ namespace Ubiq.Voip
         /// </remarks>
         public OnPeerConnectionEvent OnPeerConnection = new OnPeerConnectionEvent();
 
+        /// <summary>
+        /// The local microphone audio. Subscribing starts the microphone, even when not connected to any other peers.
+        /// </summary>
+        public event AudioSamplesHandler microphoneSamplesPushed
+        {
+            add
+            {
+                microphone ??= PeerConnectionImplFactory.RequireMicrophone(gameObject);
+                microphone.samplesPushed += value;
+            }
+            remove
+            {
+                if (microphone != null)
+                {
+                    microphone.samplesPushed -= value;
+                }
+            }
+        }
+
+        private IMicrophoneImpl microphone;
         private RoomClient client;
         private NetworkId serviceId = new NetworkId("c994-0768-d7b7-171c"); // The unique service Id
         private LogEmitter logger;

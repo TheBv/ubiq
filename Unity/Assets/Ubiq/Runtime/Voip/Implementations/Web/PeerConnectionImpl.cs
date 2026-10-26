@@ -68,10 +68,17 @@ namespace Ubiq.Voip.Implementations.Web
         public static extern int JS_WebRTC_GetRecordStatsSampleRate();
         [DllImport("__Internal")]
         public static extern void JS_WebRTC_EndStats(int pc, int frameCount);
+        [DllImport("__Internal")]
+        public static extern void JS_WebRTC_StartMicrophone();
+        [DllImport("__Internal")]
+        public static extern int JS_WebRTC_GetRecordSamples(float[] buffer, int length);
+        [DllImport("__Internal")]
+        public static extern int JS_WebRTC_GetPlaybackSamples(int pc, float[] buffer, int length);
 
         private class Context
         {
             public IPeerConnectionContext context;
+            public AudioSamplesHandler playbackSamplesPushed;
             public Action<AudioStats> playbackStatsPushed;
             public Action<AudioStats> recordStatsPushed;
             public Action<IceConnectionState> iceConnectionStateChanged;
@@ -94,6 +101,7 @@ namespace Ubiq.Voip.Implementations.Web
 
         private Coroutine updateCoroutine;
         private int peerConnectionId = -1;
+        private float[] sampleBuffer = new float[4096];
 
         private PeerConnectionState lastPeerConnectionState = PeerConnectionState.@new;
         private IceConnectionState lastIceConnectionState = IceConnectionState.@new;
@@ -150,6 +158,7 @@ namespace Ubiq.Voip.Implementations.Web
         public void Setup(IPeerConnectionContext context,
             bool polite,
             List<IceServerDetails> iceServers,
+            AudioSamplesHandler playbackSamplesPushed,
             Action<AudioStats> playbackStatsPushed,
             Action<AudioStats> recordStatsPushed,
             Action<IceConnectionState> iceConnectionStateChanged,
@@ -164,6 +173,7 @@ namespace Ubiq.Voip.Implementations.Web
             ctx = new Context();
             ctx.context = context;
             ctx.polite = polite;
+            ctx.playbackSamplesPushed = playbackSamplesPushed;
             ctx.playbackStatsPushed = playbackStatsPushed;
             ctx.recordStatsPushed = recordStatsPushed;
             ctx.iceConnectionStateChanged = iceConnectionStateChanged;
@@ -242,8 +252,21 @@ namespace Ubiq.Voip.Implementations.Web
 
                 PushPlaybackStats();
                 PushRecordStats();
+                PushPlaybackSamples();
 
                 yield return null;
+            }
+        }
+
+        private void PushPlaybackSamples()
+        {
+            var sampleRate = JS_WebRTC_GetPlaybackStatsSampleRate(peerConnectionId);
+            int count;
+            while ((count = JS_WebRTC_GetPlaybackSamples(peerConnectionId,
+                sampleBuffer,sampleBuffer.Length)) > 0)
+            {
+                ctx.playbackSamplesPushed?.Invoke(
+                    new ReadOnlySpan<float>(sampleBuffer,0,count),1,sampleRate);
             }
         }
 

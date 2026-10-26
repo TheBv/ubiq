@@ -37,6 +37,7 @@ namespace Ubiq.Voip.Implementations.Dotnet
         private class Context
         {
             public IPeerConnectionContext context;
+            public AudioSamplesHandler playbackSamplesPushed;
             public Action<AudioStats> playbackStatsPushed;
             public Action<AudioStats> recordStatsPushed;
             public Action<IceConnectionState> iceConnectionStateChanged;
@@ -78,6 +79,7 @@ namespace Ubiq.Voip.Implementations.Dotnet
             if (sink != null)
             {
                 sink.statsPushed -= Sink_StatsPushed;
+                sink.samplesPushed -= Sink_SamplesPushed;
             }
 
             if (source != null)
@@ -107,6 +109,7 @@ namespace Ubiq.Voip.Implementations.Dotnet
 
         public void Setup(IPeerConnectionContext context,
             bool polite, List<IceServerDetails> iceServers,
+            AudioSamplesHandler playbackSamplesPushed,
             Action<AudioStats> playbackStatsPushed,
             Action<AudioStats> recordStatsPushed,
             Action<IceConnectionState> iceConnectionStateChanged,
@@ -121,6 +124,7 @@ namespace Ubiq.Voip.Implementations.Dotnet
             ctx = new Context();
             ctx.context = context;
             ctx.polite = polite;
+            ctx.playbackSamplesPushed = playbackSamplesPushed;
             ctx.playbackStatsPushed = playbackStatsPushed;
             ctx.recordStatsPushed = recordStatsPushed;
             ctx.iceConnectionStateChanged = iceConnectionStateChanged;
@@ -151,10 +155,17 @@ namespace Ubiq.Voip.Implementations.Dotnet
                 return;
             }
 
-            var manager = ctx.transform.parent;
+            source = RequireSource(ctx.transform.parent);
+            source.statsPushed += Source_StatsPushed;
+        }
 
+        /// <summary>
+        /// Get the source shared by all peer connections under manager creating it if needed.
+        /// </summary>
+        public static IVoipSource RequireSource (Transform manager)
+        {
             // First, see if an source already exists among siblings
-            source = manager.GetComponentInChildren<IVoipSource>();
+            var source = manager.GetComponentInChildren<IVoipSource>();
 
             // If not, check if a hint exists and use it
             if (source == null)
@@ -176,7 +187,7 @@ namespace Ubiq.Voip.Implementations.Dotnet
                 source = go.AddComponent<MicrophoneVoipSource>();
             }
 
-            source.statsPushed += Source_StatsPushed;
+            return source;
         }
 
         private void RequireSink ()
@@ -206,6 +217,7 @@ namespace Ubiq.Voip.Implementations.Dotnet
             }
 
             sink.statsPushed += Sink_StatsPushed;
+            sink.samplesPushed += Sink_SamplesPushed;
         }
 
         public void ProcessSignalingMessage (string json)
@@ -221,6 +233,12 @@ namespace Ubiq.Voip.Implementations.Dotnet
         private void Sink_StatsPushed (AudioStats stats)
         {
             ctx.playbackStatsPushed?.Invoke(stats);
+        }
+
+        private void Sink_SamplesPushed (ReadOnlySpan<float> samples,
+            int channels, int sampleRate)
+        {
+            ctx.playbackSamplesPushed?.Invoke(samples,channels,sampleRate);
         }
 
         private RTCPeerConnection DoSetup(bool polite,

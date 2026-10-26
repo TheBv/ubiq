@@ -15,6 +15,7 @@ namespace Ubiq.Voip.Implementations.Dotnet
     {
 #pragma warning disable 67
         public event Action<AudioStats> statsPushed;
+        public event AudioSamplesHandler samplesPushed;
         public event SourceErrorDelegate OnAudioSinkError;
 #pragma warning restore 67
 

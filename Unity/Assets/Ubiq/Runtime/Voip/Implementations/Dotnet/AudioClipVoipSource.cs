@@ -40,6 +40,7 @@ namespace Ubiq.Voip.Implementations.Dotnet
         }
 
         public event Action<AudioStats> statsPushed;
+        public event AudioSamplesHandler samplesPushed;
         public event EncodedSampleDelegate OnAudioSourceEncodedSample;
         public event RawAudioSampleDelegate OnAudioSourceRawSample;
 #pragma warning disable 67
@@ -162,6 +163,7 @@ namespace Ubiq.Voip.Implementations.Dotnet
                     volumeSum:volumeSum,
                     sampleRate:16000
                 ));
+                samplesPushed?.Invoke(clipSamples,1,Clip.frequency);
 
                 time += Time.fixedDeltaTime;
             }

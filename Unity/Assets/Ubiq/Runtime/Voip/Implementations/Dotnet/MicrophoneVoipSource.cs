@@ -128,6 +128,7 @@ namespace Ubiq.Voip.Implementations.Dotnet
         }
 
         public event Action<AudioStats> statsPushed;
+        public event AudioSamplesHandler samplesPushed;
         public float gain = 1.0f;
 
         private MicrophoneListener microphoneListener = new MicrophoneListener();
@@ -239,6 +240,7 @@ namespace Ubiq.Voip.Implementations.Dotnet
                     volumeSum:volumeSum,
                     sampleRate:SAMPLE_RATE
                 ));
+                samplesPushed?.Invoke(microphoneListener.samples,1,SAMPLE_RATE);
             }
         }
 

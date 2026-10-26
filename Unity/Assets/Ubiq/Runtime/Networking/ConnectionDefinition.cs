@@ -54,7 +54,7 @@ namespace Ubiq.Networking
             platforms = new List<PlatformConnectionDefinition>();
         }
 
-        public ConnectionDefinition(string tcpUri)
+        public ConnectionDefinition(string tcpUri) : this()
         {
             if (String.IsNullOrEmpty(tcpUri))
             {

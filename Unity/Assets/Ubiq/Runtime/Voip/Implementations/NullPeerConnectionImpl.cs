@@ -8,7 +8,7 @@ namespace Ubiq.Voip.Implementations
     {
         public void Dispose() {}
         public void ProcessSignalingMessage(string json) {}
-        public void Setup(IPeerConnectionContext context, bool polite, List<IceServerDetails> iceServers, Action<AudioStats> playbackStatsPushed, Action<AudioStats> recordStatsPushed, Action<IceConnectionState> iceConnectionStateChanged, Action<PeerConnectionState> peerConnectionStateChanged)
+        public void Setup(IPeerConnectionContext context, bool polite, List<IceServerDetails> iceServers, AudioSamplesHandler playbackSamplesPushed, Action<AudioStats> playbackStatsPushed, Action<AudioStats> recordStatsPushed, Action<IceConnectionState> iceConnectionStateChanged, Action<PeerConnectionState> peerConnectionStateChanged)
         {
             // Pretend we are connected to silence/hide warnings
             if (iceConnectionStateChanged != null)
@@ -17,5 +17,10 @@ namespace Ubiq.Voip.Implementations
             }
         }
         public void UpdateSpatialization(Vector3 sourcePosition, Quaternion sourceRotation, Vector3 listenerPosition, Quaternion listenerRotation) {}
+    }
+
+    public class NullMicrophoneImpl : IMicrophoneImpl
+    {
+        public event AudioSamplesHandler samplesPushed { add {} remove {} }
     }
 }

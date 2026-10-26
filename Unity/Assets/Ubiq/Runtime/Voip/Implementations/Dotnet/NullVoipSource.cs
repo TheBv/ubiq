@@ -13,6 +13,7 @@ namespace Ubiq.Voip.Implementations.Dotnet
 
     #pragma warning disable 0067
         public event Action<AudioStats> statsPushed;
+        public event AudioSamplesHandler samplesPushed;
         public event EncodedSampleDelegate OnAudioSourceEncodedSample;
         public event RawAudioSampleDelegate OnAudioSourceRawSample;
         public event SourceErrorDelegate OnAudioSourceError;

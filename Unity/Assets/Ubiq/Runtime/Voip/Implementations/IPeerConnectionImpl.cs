@@ -121,11 +121,26 @@ namespace Ubiq.Voip.Implementations
         }
     }
 
+    /// <summary>
+    /// Read-only audio samples, interleaved if channels > 1. Always called on the main thread. The span is only valid for the duration of the call.
+    /// </summary>
+    public delegate void AudioSamplesHandler(ReadOnlySpan<float> samples,
+        int channels, int sampleRate);
+
+    /// <summary>
+    /// The local audio input shared by all peer connections. Subscribing starts the input, even with no peer connections.
+    /// </summary>
+    public interface IMicrophoneImpl
+    {
+        event AudioSamplesHandler samplesPushed;
+    }
+
     public interface IPeerConnectionImpl : IDisposable
     {
         void Setup(IPeerConnectionContext context,
             bool polite,
             List<IceServerDetails> iceServers,
+            AudioSamplesHandler playbackSamplesPushed,
             Action<AudioStats> playbackStatsPushed,
             Action<AudioStats> recordStatsPushed,
             Action<IceConnectionState> iceConnectionStateChanged,

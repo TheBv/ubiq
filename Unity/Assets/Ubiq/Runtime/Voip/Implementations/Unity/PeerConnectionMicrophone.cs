@@ -11,7 +11,7 @@ using UnityEngine.Android;
 
 namespace Ubiq.Voip.Implementations.Unity
 {
-    public class PeerConnectionMicrophone : MonoBehaviour
+    public class PeerConnectionMicrophone : MonoBehaviour, IMicrophoneImpl
     {
         public enum State
         {
@@ -38,9 +38,11 @@ namespace Ubiq.Voip.Implementations.Unity
 
         public AudioStreamTrack audioStreamTrack { get; private set; }
         public event Action<AudioStats> statsPushed;
+        public event AudioSamplesHandler samplesPushed;
 
         private AudioSource audioSource;
         private List<GameObject> users = new List<GameObject>();
+        private bool inUse => users.Count > 0 || samplesPushed != null;
         private bool microphoneAuthorized;
         private AudioStatsFilter statsFilter;
 
@@ -69,7 +71,7 @@ namespace Ubiq.Voip.Implementations.Unity
             }
 #endif
 
-            if (state == State.Idle && users.Count > 0)
+            if (state == State.Idle && inUse)
             {
                 RequireAudioSource();
                 audioSource.clip = Microphone.Start("",true,1,16000);
@@ -85,7 +87,7 @@ namespace Ubiq.Voip.Implementations.Unity
                 }
             }
 
-            if (state == State.Running && users.Count == 0)
+            if (state == State.Running && !inUse)
             {
                 audioSource.Stop();
                 Microphone.End("");
@@ -101,6 +103,12 @@ namespace Ubiq.Voip.Implementations.Unity
             statsPushed?.Invoke(stats);
         }
 
+        private void StatsFilter_SamplesPushed(ReadOnlySpan<float> samples,
+            int channels, int sampleRate)
+        {
+            samplesPushed?.Invoke(samples,channels,sampleRate);
+        }
+
         private void RequireAudioSource()
         {
             if(!audioSource)
@@ -112,26 +120,34 @@ namespace Ubiq.Voip.Implementations.Unity
                     audioSource = gameObject.AddComponent<AudioSource>();
                     statsFilter = gameObject.AddComponent<AudioStatsFilter>();
                     statsFilter.hideFlags = HideFlags.HideInInspector;
-                    statsFilter.SetStatsPushedCallback(StatsFilter_StatsPushed);
+                    statsFilter.SetCallbacks(StatsFilter_StatsPushed,StatsFilter_SamplesPushed);
                 }
             }
         }
 
         /// <summary>
-        /// Indicate a new user to the microphone. If run as part of a
-        /// coroutine, this will complete when the microphone is ready to be
-        /// used. 
+        /// Get the microphone shared by all peer connections under manager,
+        /// adding it if needed.
         /// </summary>
-        public IEnumerator AddUser(GameObject user)
+        public static PeerConnectionMicrophone Require(GameObject manager)
+        {
+            var microphone = manager.GetComponent<PeerConnectionMicrophone>();
+            if (!microphone)
+            {
+                microphone = manager.AddComponent<PeerConnectionMicrophone>();
+            }
+            return microphone;
+        }
+
+        /// <summary>
+        /// Indicate a new user to the microphone. The microphone is ready to
+        /// be used once state is Running.
+        /// </summary>
+        public void AddUser(GameObject user)
         {
             if (!users.Contains(user))
             {
                 users.Add(user);
-            }
-
-            while (state != State.Running)
-            {
-                yield return null;
             }
         }
 

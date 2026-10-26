@@ -37,6 +37,7 @@ namespace Ubiq.Voip.Implementations.Unity
         private class Context
         {
             public IPeerConnectionContext context;
+            public AudioSamplesHandler playbackSamplesPushed;
             public Action<AudioStats> playbackStatsPushed;
             public Action<AudioStats> recordStatsPushed;
             public Action<IceConnectionState> iceConnectionStateChanged;
@@ -103,6 +104,7 @@ namespace Ubiq.Voip.Implementations.Unity
 
         public void Setup(IPeerConnectionContext context,
             bool polite, List<IceServerDetails> iceServers,
+            AudioSamplesHandler playbackSamplesPushed,
             Action<AudioStats> playbackStatsPushed,
             Action<AudioStats> recordStatsPushed,
             Action<IceConnectionState> iceConnectionStateChanged,
@@ -117,6 +119,7 @@ namespace Ubiq.Voip.Implementations.Unity
             ctx = new Context();
             ctx.context = context;
             ctx.polite = polite;
+            ctx.playbackSamplesPushed = playbackSamplesPushed;
             ctx.playbackStatsPushed = playbackStatsPushed;
             ctx.recordStatsPushed = recordStatsPushed;
             ctx.iceConnectionStateChanged = iceConnectionStateChanged;
@@ -140,7 +143,7 @@ namespace Ubiq.Voip.Implementations.Unity
                 RequireCacheFilter();
                 // 2. Play back WebRTC audio (added through SetTrack)
                 receiverAudioSource.SetTrack(e.Track as AudioStreamTrack);
-                // 3. (unrelated) Add a filter to gather audio stats
+                // 3. (unrelated) Add a filter to gather audio stats and samples
                 RequireStatsFilter();
                 // 4. Restore spatialisation by multiplying output of 2 with 1
                 RequireRestoreFilter();
@@ -178,15 +181,9 @@ namespace Ubiq.Voip.Implementations.Unity
 
         private IEnumerator StartMicrophoneTrack()
         {
-            var manager = ctx.transform.parent.gameObject;
-
-            microphone = manager.GetComponent<PeerConnectionMicrophone>();
-            if (!microphone)
-            {
-                microphone = manager.AddComponent<PeerConnectionMicrophone>();
-            }
-
-            yield return microphone.AddUser(ctx.gameObject);
+            microphone = PeerConnectionMicrophone.Require(ctx.transform.parent.gameObject);
+            microphone.AddUser(ctx.gameObject);
+            yield return new WaitUntil(() => microphone.state == PeerConnectionMicrophone.State.Running);
             microphone.statsPushed += PeerConnectionMicrophone_OnStats;
             peerConnection.AddTrack(microphone.audioStreamTrack);
         }
@@ -304,7 +301,7 @@ namespace Ubiq.Voip.Implementations.Unity
             }
 
             statsFilter = ctx.gameObject.AddComponent<AudioStatsFilter>();
-            statsFilter.SetStatsPushedCallback(ctx.playbackStatsPushed);
+            statsFilter.SetCallbacks(ctx.playbackStatsPushed,ctx.playbackSamplesPushed);
             statsFilter.hideFlags = HideFlags.HideInInspector;
             objectsForCleanup.Add(statsFilter);
         }
